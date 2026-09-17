@@ -1,6 +1,7 @@
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { useApp } from './store/appContext'
 import { AuthPage } from './features/auth/AuthPage'
+import { OnboardingPage } from './features/onboarding/OnboardingPage'
 import { Shell } from './features/layout/Shell'
 import { DashboardPage } from './features/dashboard/DashboardPage'
 import { KnowledgePage } from './features/knowledge/KnowledgePage'
@@ -9,6 +10,8 @@ import { ChatPage } from './features/chat/ChatPage'
 import { FocusPage } from './features/focus/FocusPage'
 import { ReportPage } from './features/report/ReportPage'
 import { SettingsPage } from './features/settings/SettingsPage'
+
+const ONBOARD_KEY = 'shixi:onboarded'
 
 export default function App() {
   const { account, booting } = useApp()
@@ -26,6 +29,10 @@ export default function App() {
     <HashRouter>
       <Routes>
         <Route
+          path="/welcome"
+          element={account ? <Navigate to="/" replace /> : <OnboardingPage />}
+        />
+        <Route
           path="/login"
           element={account ? <Navigate to="/" replace /> : <AuthPage />}
         />
@@ -41,7 +48,14 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         ) : (
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route
+            path="*"
+            element={
+              localStorage.getItem(ONBOARD_KEY)
+                ? <Navigate to="/login" replace />
+                : <Navigate to="/welcome" replace />
+            }
+          />
         )}
       </Routes>
     </HashRouter>

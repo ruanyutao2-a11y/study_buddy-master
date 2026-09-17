@@ -864,6 +864,90 @@ select {
   line-height: 1.6;
 }
 
+/* ================= 功能引导页 ================= */
+.onboarding-wrap {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.onboarding-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--paper-card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+  padding: 28px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  min-height: 460px;
+}
+.ob-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ob-skip {
+  color: var(--ink-soft);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.ob-skip:hover {
+  color: var(--ink);
+}
+.ob-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px 4px;
+}
+.ob-ico {
+  font-size: 64px;
+  line-height: 1;
+  margin-bottom: 18px;
+  animation: fadeIn 0.4s ease;
+}
+.ob-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+.ob-text {
+  color: var(--ink-soft);
+  font-size: 15px;
+  line-height: 1.8;
+}
+.ob-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 16px 0;
+}
+.ob-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+  transition: all 0.2s;
+}
+.ob-dot.active {
+  background: var(--seal);
+  width: 22px;
+  border-radius: 999px;
+}
+.ob-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 /* ================= 知识点 ================= */
 .kb-layout {
   display: grid;

@@ -13,6 +13,23 @@ import type {
 } from './types'
 import { applyReview } from './fsrs'
 
+// 云端同步钩子：由 appContext 在启动时注册（提供当前 Supabase 配置 + 是否云端账号）。
+// 数据层负责在本地写操作后调用它，实现「本地为主、后台镜像到云端」。
+type SyncHook = (store: string, rec: unknown, op: 'upsert' | 'delete') => void
+let syncHook: SyncHook | null = null
+
+export function setSyncHook(hook: SyncHook | null): void {
+  syncHook = hook
+}
+
+function emitSync(store: string, rec: unknown, op: 'upsert' | 'delete'): void {
+  try {
+    syncHook?.(store, rec, op)
+  } catch {
+    /* 同步失败忽略，不阻塞本地 */
+  }
+}
+
 // ---------- 账号 ----------
 export async function listAccounts(): Promise<Account[]> {
   const all = await dbGetAll<Account>('accounts')
@@ -52,21 +69,32 @@ export async function createCategory(input: {
     createdAt: Date.now(),
   }
   await dbPut('categories', cat)
+  emitSync('categories', cat, 'upsert')
   return cat
 }
 
 export async function updateCategory(cat: Category): Promise<void> {
   await dbPut('categories', cat)
+  emitSync('categories', cat, 'upsert')
 }
 
 export async function deleteCategory(accountId: string, id: string): Promise<void> {
   const topics = await listTopics(accountId)
   const inCat = topics.filter((t) => t.categoryId === id)
-  for (const t of inCat) await dbDelete('topics', t.id)
+  for (const t of inCat) {
+    await dbDelete('topics', t.id)
+    emitSync('topics', t, 'delete')
+  }
   const logs = await dbGetAll<ReviewLog>('review_logs')
   const logIds = new Set(inCat.map((t) => t.id))
-  for (const l of logs) if (logIds.has(l.topicId)) await dbDelete('review_logs', l.id)
+  for (const l of logs) {
+    if (logIds.has(l.topicId)) {
+      await dbDelete('review_logs', l.id)
+      emitSync('review_logs', l, 'delete')
+    }
+  }
   await dbDelete('categories', id)
+  emitSync('categories', { id }, 'delete')
 }
 
 // ---------- 知识点 ----------
@@ -107,18 +135,26 @@ export async function createTopic(
     updatedAt: now,
   }
   await dbPut('topics', topic)
+  emitSync('topics', topic, 'upsert')
   return topic
 }
 
 export async function updateTopic(topic: Topic): Promise<void> {
   topic.updatedAt = Date.now()
   await dbPut('topics', topic)
+  emitSync('topics', topic, 'upsert')
 }
 
 export async function deleteTopic(id: string): Promise<void> {
   await dbDelete('topics', id)
+  emitSync('topics', { id }, 'delete')
   const logs = await dbGetAll<ReviewLog>('review_logs')
-  for (const l of logs) if (l.topicId === id) await dbDelete('review_logs', l.id)
+  for (const l of logs) {
+    if (l.topicId === id) {
+      await dbDelete('review_logs', l.id)
+      emitSync('review_logs', l, 'delete')
+    }
+  }
 }
 
 // ---------- 复习 ----------
@@ -138,6 +174,7 @@ export async function reviewTopic(accountId: string, topic: Topic, rating: Ratin
     updatedAt: now,
   }
   await dbPut('topics', updated)
+  emitSync('topics', updated, 'upsert')
 
   const log: ReviewLog = {
     id: genId(),
@@ -152,6 +189,7 @@ export async function reviewTopic(accountId: string, topic: Topic, rating: Ratin
     stateAfter: snap.state,
   }
   await dbPut('review_logs', log)
+  emitSync('review_logs', log, 'upsert')
   return updated
 }
 
@@ -177,10 +215,12 @@ export async function listFocusSessions(accountId: string): Promise<FocusSession
 
 export async function saveFocusSession(session: FocusSession): Promise<void> {
   await dbPut('focus_sessions', session)
+  emitSync('focus_sessions', session, 'upsert')
 }
 
 export async function deleteFocusSession(id: string): Promise<void> {
   await dbDelete('focus_sessions', id)
+  emitSync('focus_sessions', { id }, 'delete')
 }
 
 // ---------- 会话/聊天 ----------
@@ -212,6 +252,7 @@ export async function createChat(
     updatedAt: now,
   }
   await dbPut('chats', chat)
+  emitSync('chats', chat, 'upsert')
   return chat
 }
 
@@ -219,12 +260,19 @@ export async function touchChat(chat: ChatSession, title?: string): Promise<void
   chat.updatedAt = Date.now()
   if (title !== undefined) chat.title = title
   await dbPut('chats', chat)
+  emitSync('chats', chat, 'upsert')
 }
 
 export async function deleteChat(id: string): Promise<void> {
   await dbDelete('chats', id)
+  emitSync('chats', { id }, 'delete')
   const msgs = await dbGetAll<ChatMessage>('messages')
-  for (const m of msgs) if (m.sessionId === id) await dbDelete('messages', m.id)
+  for (const m of msgs) {
+    if (m.sessionId === id) {
+      await dbDelete('messages', m.id)
+      emitSync('messages', m, 'delete')
+    }
+  }
 }
 
 export async function listMessages(sessionId: string): Promise<ChatMessage[]> {
@@ -234,6 +282,7 @@ export async function listMessages(sessionId: string): Promise<ChatMessage[]> {
 
 export async function appendMessage(message: ChatMessage): Promise<void> {
   await dbPut('messages', message)
+  emitSync('messages', message, 'upsert')
 }
 
 // ---------- 账号级数据清理 ----------

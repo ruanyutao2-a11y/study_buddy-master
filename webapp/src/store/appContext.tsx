@@ -7,12 +7,13 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { deleteAccount, getAccount, listAccounts, saveAccount, wipeAccount } from '../lib/data'
+import { deleteAccount, getAccount, listAccounts, saveAccount, setSyncHook, wipeAccount } from '../lib/data'
 import { hashPassword, randomSalt } from '../lib/crypto'
 import { genId } from '../lib/idb'
 import { DEFAULT_SETTINGS, type Account, type Settings, type ThemeMode } from '../lib/types'
 import { getSupabase, isSupabaseConfigured, resetSupabaseClient } from '../lib/supabase'
 import { SUPABASE_DEFAULTS } from '../lib/supabaseConfig'
+import { deleteToPush, recordToPush, pushRecords, pullAndMerge, wipeCloudAccount, type SyncConfig } from '../lib/sync'
 
 const CURRENT_KEY = 'shixi:currentAccountId'
 const SETTINGS_PREFIX = 'shixi:settings:'
@@ -82,6 +83,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const bumpData = useCallback(() => setDataVersion((v) => v + 1), [])
 
+  // 注册数据层同步钩子：云账号 + 已配置 Supabase 时，本地写操作后台镜像到云端。
+  useEffect(() => {
+    if (!supabaseReady) {
+      setSyncHook(null)
+      return
+    }
+    const cfg: SyncConfig = { url: supabaseCfg.url, anonKey: supabaseCfg.publishableKey }
+    // 累积待上行任务，批量推送（去抖）
+    let queue: ReturnType<typeof recordToPush>[] = []
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const flush = async () => {
+      timer = null
+      const tasks = queue
+      queue = []
+      const valid = tasks.filter((t): t is NonNullable<typeof t> => t != null)
+      if (valid.length === 0) return
+      const curId = account?.id
+      if (!curId || !curId.startsWith('sb:')) return
+      await pushRecords(cfg, valid)
+    }
+    setSyncHook((_store, rec, op) => {
+      const curId = account?.id
+      if (!curId || !curId.startsWith('sb:')) return
+      const task = op === 'upsert' ? recordToPush(_store, rec, curId) : deleteToPush(_store, rec, curId)
+      if (task) queue.push(task)
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => void flush(), 300)
+    })
+    return () => {
+      if (timer) clearTimeout(timer)
+      setSyncHook(null)
+    }
+  }, [supabaseReady, supabaseCfg, account?.id])
+
   // 把本地账号同步为「本地登录态」；Supabase 用户会做 upsert 记录。
   const applyLocalAccount = useCallback((acc: Account | null) => {
     setAccount(acc)
@@ -122,6 +157,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 setAccounts(await listAccounts())
                 localStorage.setItem(CURRENT_KEY, uid)
                 applyLocalAccount(acc)
+                // 拉取云端数据（后台合并，不阻塞登录）
+                void pullAndMerge({ url: supabaseCfg.url, anonKey: supabaseCfg.publishableKey }, uid)
+                  .then(() => bumpData())
+                  .catch(() => undefined)
                 setBooting(false)
                 return
               }
@@ -200,6 +239,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 setSettings(loadSettings(uid))
                 setAccounts(await listAccounts())
                 setDataVersion((v) => v + 1)
+                // 拉取云端数据（后台合并）
+                void pullAndMerge({ url: supabaseCfg.url, anonKey: supabaseCfg.publishableKey }, uid)
+                  .then(() => bumpData())
+                  .catch(() => undefined)
                 return null
               }
               if (data?.user) return null
@@ -331,6 +374,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!account) return '未登录'
     await wipeAccount(account.id)
     await deleteAccount(account.id)
+    // 云端账号：清空云端该用户的数据（尽力而为，不阻塞）
+    if (account.source === 'supabase' && supabaseReady) {
+      void wipeCloudAccount({ url: supabaseCfg.url, anonKey: supabaseCfg.publishableKey }, account.id).catch(
+        () => undefined,
+      )
+    }
     localStorage.removeItem(SETTINGS_PREFIX + account.id)
     const remaining = (await listAccounts()).filter((a) => a.id !== account.id)
     setAccounts(remaining)

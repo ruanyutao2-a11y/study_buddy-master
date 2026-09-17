@@ -85,7 +85,25 @@ npm run build
 ## 账号与数据说明
 
 - **本地账号**：数据保存在浏览器 IndexedDB，按账号隔离，换设备/换浏览器数据不互通。
-- 需要**跨设备同步**时，可自行接入 Supabase / Firebase 等后端（本项目预留了数据访问层 `src/lib/data.ts`，替换为远端实现即可）。
+- **云端账号（Supabase）**：用邮箱注册/登录，登录态与学习数据可跨设备同步。
+
+### 启用云端同步（Supabase）
+
+跨设备同步需要先在 Supabase 建好业务表并开启 RLS：
+
+1. 在 [supabase.com](https://supabase.com) 新建（或打开）项目。
+2. 打开 **SQL Editor**，把仓库里的 `webapp/supabase_schema.sql` 整段粘贴执行 —— 会创建 6 张业务表（分类/知识点/复习记录/专注/聊天会话/消息）并为每张表开启 RLS（用户只能读写自己的数据）。
+3. 在 **Project Settings → API** 复制 **Project URL** 与 **anon public key**。
+4. 把它们填入本站「设置 → ☁️ 云端账号」（或直接写进 `src/lib/supabaseConfig.ts` 作为默认值）。
+5. 之后在登录页用**邮箱**注册/登录，即自动开启跨设备同步。
+
+> 建议在 **Authentication → Providers → Email** 中按需关闭「Confirm email」，否则新用户注册后需先查收邮件确认。
+
+### 同步机制
+
+- 采用「本地优先」：所有改动先写入浏览器 IndexedDB，再后台异步镜像到 Supabase；离线也能正常使用。
+- 登录/启动时从云端拉取并按 `updatedAt` 合并，以较新者为准。
+- 云端与本地字段通过 camelCase↔snake_case 自动映射（见 `src/lib/sync.ts`）。
 
 ## 品牌定制
 
