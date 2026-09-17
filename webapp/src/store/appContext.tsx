@@ -12,6 +12,7 @@ import { hashPassword, randomSalt } from '../lib/crypto'
 import { genId } from '../lib/idb'
 import { DEFAULT_SETTINGS, type Account, type Settings, type ThemeMode } from '../lib/types'
 import { getSupabase, isSupabaseConfigured, resetSupabaseClient } from '../lib/supabase'
+import { SUPABASE_DEFAULTS } from '../lib/supabaseConfig'
 
 const CURRENT_KEY = 'shixi:currentAccountId'
 const SETTINGS_PREFIX = 'shixi:settings:'
@@ -26,11 +27,12 @@ interface SupabaseConfig {
 function loadGlobalSupabaseConfig(): SupabaseConfig {
   try {
     const raw = localStorage.getItem(GLOBAL_SUPABASE_CONFIG)
-    if (raw) return { url: '', publishableKey: '', ...(JSON.parse(raw) as Partial<SupabaseConfig>) }
+    if (raw) return { url: SUPABASE_DEFAULTS.url, publishableKey: SUPABASE_DEFAULTS.anonKey, ...(JSON.parse(raw) as Partial<SupabaseConfig>) }
   } catch {
     /* ignore */
   }
-  return { url: '', publishableKey: '' }
+  // 未手动保存过时，回退到内置默认配置（开箱可用）
+  return { url: SUPABASE_DEFAULTS.url, publishableKey: SUPABASE_DEFAULTS.anonKey }
 }
 
 function saveGlobalSupabaseConfig(cfg: SupabaseConfig): void {
