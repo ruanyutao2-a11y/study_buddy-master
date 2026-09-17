@@ -17,6 +17,7 @@ import { deleteToPush, recordToPush, pushRecords, pullAndMerge, wipeCloudAccount
 
 const CURRENT_KEY = 'shixi:currentAccountId'
 const SETTINGS_PREFIX = 'shixi:settings:'
+const LOGGED_OUT_KEY = 'shixi:loggedOut'
 // 全局 Supabase 配置存独立 key，供未登录时也能读取（例如登录前）。
 const GLOBAL_SUPABASE_CONFIG = 'shixi:supabaseConfig'
 
@@ -38,6 +39,12 @@ function loadGlobalSupabaseConfig(): SupabaseConfig {
 
 function saveGlobalSupabaseConfig(cfg: SupabaseConfig): void {
   localStorage.setItem(GLOBAL_SUPABASE_CONFIG, JSON.stringify(cfg))
+}
+
+// 记录当前登录账号，并清除「已登出」标记（用户主动登录后应恢复自动会话能力）
+function markAuthenticated(accountId: string): void {
+  localStorage.removeItem(LOGGED_OUT_KEY)
+  localStorage.setItem(CURRENT_KEY, accountId)
 }
 
 function loadSettings(accountId: string): Settings {
@@ -132,8 +139,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
         setAccounts(all)
 
-        // 1) 若 Supabase 已配置，尝试恢复云端会话
-        if (isSupabaseConfigured(supabaseCfg)) {
+        // 1) 若 Supabase 已配置，且用户未主动登出，尝试恢复云端会话
+        const explicitlyLoggedOut = localStorage.getItem(LOGGED_OUT_KEY) === '1'
+        if (isSupabaseConfigured(supabaseCfg) && !explicitlyLoggedOut) {
           try {
             const sb = getSupabase(supabaseCfg)
             if (sb) {
@@ -155,7 +163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 }
                 await saveAccount(acc)
                 setAccounts(await listAccounts())
-                localStorage.setItem(CURRENT_KEY, uid)
+                markAuthenticated(uid)
                 applyLocalAccount(acc)
                 // 拉取云端数据（后台合并，不阻塞登录）
                 void pullAndMerge({ url: supabaseCfg.url, anonKey: supabaseCfg.publishableKey }, uid)
@@ -234,7 +242,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   createdAt: existing?.createdAt ?? Date.now(),
                 }
                 await saveAccount(acc)
-                localStorage.setItem(CURRENT_KEY, uid)
+                markAuthenticated(uid)
                 setAccount(acc)
                 setSettings(loadSettings(uid))
                 setAccounts(await listAccounts())
@@ -262,7 +270,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!user.salt || !user.passwordHash) return '该账号为云端账号，请用邮箱登录'
       const hash = await hashPassword(password, user.salt)
       if (hash !== user.passwordHash) return '密码错误'
-      localStorage.setItem(CURRENT_KEY, user.id)
+      markAuthenticated(user.id)
       setAccount(user)
       setAccounts(all)
       setSettings(loadSettings(user.id))
@@ -304,7 +312,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               createdAt: Date.now(),
             }
             await saveAccount(acc)
-            localStorage.setItem(CURRENT_KEY, uid)
+            markAuthenticated(uid)
             setAccount(acc)
             setSettings({ ...DEFAULT_SETTINGS, supabaseUrl: supabaseCfg.url, supabasePublishableKey: supabaseCfg.publishableKey })
             setAccounts(await listAccounts())
@@ -338,7 +346,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       await saveAccount(acc)
       setAccounts([...all, acc])
-      localStorage.setItem(CURRENT_KEY, acc.id)
+      markAuthenticated(acc.id)
       setAccount(acc)
       setSettings({ ...DEFAULT_SETTINGS, supabaseUrl: supabaseCfg.url, supabasePublishableKey: supabaseCfg.publishableKey })
       setDataVersion((v) => v + 1)
@@ -348,8 +356,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const logout = useCallback(async () => {
-    // 若当前是 Supabase 账号，登出云端会话
-    if (account?.source === 'supabase' && supabaseReady) {
+    // 若当前是 Supabase 账号，登出云端会话并确保本地 token 清除
+    if (supabaseReady) {
       try {
         const sb = getSupabase(supabaseCfg)
         await sb?.auth.signOut()
@@ -357,14 +365,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         /* ignore */
       }
     }
+    localStorage.setItem(LOGGED_OUT_KEY, '1')
     localStorage.removeItem(CURRENT_KEY)
     setAccount(null)
-  }, [account, supabaseReady, supabaseCfg])
+  }, [supabaseReady, supabaseCfg])
 
   const switchAccount = useCallback(async (id: string) => {
     const cur = await getAccount(id)
     if (!cur) return
-    localStorage.setItem(CURRENT_KEY, id)
+    markAuthenticated(id)
     setAccount(cur)
     setSettings(loadSettings(cur.id))
     setDataVersion((v) => v + 1)
@@ -374,27 +383,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!account) return '未登录'
     await wipeAccount(account.id)
     await deleteAccount(account.id)
-    // 云端账号：清空云端该用户的数据（尽力而为，不阻塞）
+    // 云端账号：清空云端数据 + 登出，避免刷新后会话自动恢复复活该账号
     if (account.source === 'supabase' && supabaseReady) {
       void wipeCloudAccount({ url: supabaseCfg.url, anonKey: supabaseCfg.publishableKey }, account.id).catch(
         () => undefined,
       )
+      try {
+        const sb = getSupabase(supabaseCfg)
+        await sb?.auth.signOut()
+      } catch {
+        /* ignore */
+      }
     }
     localStorage.removeItem(SETTINGS_PREFIX + account.id)
     const remaining = (await listAccounts()).filter((a) => a.id !== account.id)
     setAccounts(remaining)
     const next = remaining[0]
     if (next) {
-      localStorage.setItem(CURRENT_KEY, next.id)
+      markAuthenticated(next.id)
       setAccount(next)
       setSettings(loadSettings(next.id))
     } else {
+      localStorage.setItem(LOGGED_OUT_KEY, '1')
       localStorage.removeItem(CURRENT_KEY)
       setAccount(null)
     }
     setDataVersion((v) => v + 1)
     return null
-  }, [account])
+  }, [account, supabaseReady, supabaseCfg])
 
   useEffect(() => {
     const root = document.documentElement
