@@ -3,7 +3,7 @@ import { useApp } from '../../store/appContext'
 import { BRAND } from '../../lib/brand'
 
 export function AuthPage() {
-  const { login, register } = useApp()
+  const { login, register, supabaseReady } = useApp()
   const [tab, setTab] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -66,15 +66,20 @@ export function AuthPage() {
             </div>
           )}
           <div className="field">
-            <label className="label">用户名</label>
+            <label className="label">{supabaseReady ? '用户名 / 邮箱' : '用户名'}</label>
             <input
               className="input"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="用户名"
+              placeholder={supabaseReady ? '邮箱可跨设备登录，用户名仅本机' : '用户名'}
               autoComplete="username"
               required
             />
+            <div className="hint">
+              {supabaseReady
+                ? '填邮箱（如 a@b.com）注册到云端，任意设备都能登录并同步数据。'
+                : '云端未配置，账号仅保存在当前浏览器。'}
+            </div>
           </div>
           <div className="field">
             <label className="label">密码</label>
@@ -95,9 +100,9 @@ export function AuthPage() {
         </form>
 
         <div className="auth-note">
-          本地账号：数据仅保存在当前浏览器（IndexedDB），按账号隔离，不上传任何服务器。
-          <br />
-          若要跨设备同步，可在「设置」中配置后端服务。
+          {supabaseReady
+            ? '已接入云端账号：用邮箱注册/登录，即可跨设备同步。普通用户名注册的账号仍为本地账号（仅本机）。'
+            : '本地账号：数据仅保存在当前浏览器，不上传。要跨设备登录，请先在「设置 → 云端账号」填入 Supabase 的 URL 与 Key。'}
         </div>
       </div>
     </div>

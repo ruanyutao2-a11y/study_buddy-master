@@ -4,12 +4,15 @@ export type Rating = 1 | 2 | 3 | 4
 export type CardState = 'new' | 'learning' | 'review' | 'relearning'
 export type ThemeMode = 'light' | 'dark' | 'system'
 
+export type AccountSource = 'local' | 'supabase'
+
 export interface Account {
   id: string
   username: string
   displayName: string
-  salt: string
-  passwordHash: string
+  salt?: string
+  passwordHash?: string
+  source?: AccountSource
   createdAt: number
 }
 
@@ -96,6 +99,8 @@ export interface Settings {
   theme: ThemeMode
   dailyReviewLimit: number
   socraticEnabled: boolean
+  supabaseUrl: string
+  supabasePublishableKey: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -106,6 +111,8 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   dailyReviewLimit: 50,
   socraticEnabled: true,
+  supabaseUrl: '',
+  supabasePublishableKey: '',
 }
 
 // 掌握度标签候选

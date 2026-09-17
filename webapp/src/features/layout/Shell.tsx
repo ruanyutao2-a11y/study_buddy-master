@@ -27,7 +27,7 @@ export function Shell() {
   }
 
   const handleLogout = () => {
-    logout()
+    void logout()
     closeMenu()
   }
 
