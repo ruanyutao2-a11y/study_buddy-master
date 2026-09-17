@@ -231,6 +231,38 @@ export function ChatPage() {
         </aside>
 
         <section className="chat-window">
+          <div className="chat-mobile-bar">
+            <div className="mb-row">
+              <button className="btn btn-primary btn-sm" onClick={() => void startNew()}>
+                ＋ 新对话
+              </button>
+              <button
+                className={`chip${newMode === 'socratic' ? ' active' : ''}`}
+                onClick={() => setNewMode('socratic')}
+              >
+                🧭 苏格拉底
+              </button>
+              <button
+                className={`chip${newMode === 'normal' ? ' active' : ''}`}
+                onClick={() => setNewMode('normal')}
+              >
+                💬 直接问答
+              </button>
+            </div>
+            {chats && chats.length > 0 && (
+              <div className="mb-sessions">
+                {chats.map((c) => (
+                  <div key={c.id} className={`mb-session${c.id === currentId ? ' active' : ''}`}>
+                    <span onClick={() => setCurrentId(c.id)}>{c.title}</span>
+                    <span className="x" onClick={() => void handleDelete(c.id)}>
+                      ✕
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="chat-win-head">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="tag tag-seal">{currentChat?.mode === 'normal' ? '💬 直接问答' : '🧭 苏格拉底'}</span>
